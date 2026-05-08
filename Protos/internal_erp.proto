@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option csharp_namespace = "Erp.Api.Grpc";
+
+package internalerp;
+
+service InternalErp {
+  rpc GetSystemSummary (SystemSummaryRequest) returns (SystemSummaryReply);
+}
+
+message SystemSummaryRequest {}
+
+message SystemSummaryReply {
+  int32 user_count = 1;
+  int32 role_count = 2;
+  int32 department_count = 3;
+}

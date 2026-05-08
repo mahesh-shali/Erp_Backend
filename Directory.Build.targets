@@ -1,0 +1,7 @@
+<Project>
+  <Target Name="UpdateDatabaseAfterBuild"
+          AfterTargets="Build"
+          Condition="'$(AutoDatabaseUpdateOnBuild)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Exec Command="dotnet ef database update --no-build" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+</Project>

@@ -1,0 +1,40 @@
+# Build output
+bin/
+obj/
+out/
+publish/
+TestResults/
+
+# User and IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local environment and secrets
+.env
+.env.*
+appsettings.Local.json
+appsettings.*.local.json
+secrets.json
+
+# Logs and diagnostics
+*.log
+logs/
+*.dmp
+*.trace
+
+# Coverage
+coverage/
+*.coverage
+*.coveragexml
+coverage.cobertura.xml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+appsettings.json
+appsettings.Development.json
