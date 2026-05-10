@@ -2,7 +2,15 @@ namespace Erp.Api.Configuration;
 
 public static class EnvLoader
 {
-    public static void Load(string path)
+    public static void Load(params string[] paths)
+    {
+        foreach (var path in paths)
+        {
+            LoadFile(path);
+        }
+    }
+
+    private static void LoadFile(string path)
     {
         if (!File.Exists(path))
         {
@@ -26,10 +34,7 @@ public static class EnvLoader
             var key = line[..separatorIndex].Trim();
             var value = line[(separatorIndex + 1)..].Trim().Trim('"');
 
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
-            {
-                Environment.SetEnvironmentVariable(key, value);
-            }
+            Environment.SetEnvironmentVariable(key, value);
         }
     }
 }

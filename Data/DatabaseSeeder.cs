@@ -71,16 +71,17 @@ public static class DatabaseSeeder
         var mainItems = new[]
         {
             new NavSeed("Dashboard", "dashboard", "/dashboard", AppPermissions.DashboardView, 1),
-            new NavSeed("Master", "master", "/master", AppPermissions.MasterView, 2),
-            new NavSeed("Sales", "sales", "/sales", AppPermissions.SalesView, 3),
-            new NavSeed("Outsourcing", "outsourcing", "/outsourcing", AppPermissions.OutsourcingView, 4),
-            new NavSeed("Production", "production", "/production", AppPermissions.ProductionView, 5),
-            new NavSeed("Inventory", "inventory", "/inventory", AppPermissions.InventoryView, 6),
-            new NavSeed("Planning", "planning", "/planning", AppPermissions.PlanningView, 7),
-            new NavSeed("Cash Flow", "cash-flow", "/cash-flow", AppPermissions.CashFlowView, 8),
-            new NavSeed("Inspection", "inspection", "/inspection", AppPermissions.InspectionView, 9),
-            new NavSeed("Maintenance", "maintenance", "/maintenance", AppPermissions.MaintenanceView, 10),
-            new NavSeed("Human Resource", "human-resource", "/human-resource", AppPermissions.HumanResourceView, 11)
+            new NavSeed("AI Chat", "ai-chat", "/ai-chat", AppPermissions.AiChatView, 2),
+            new NavSeed("Master", "master", "/master", AppPermissions.MasterView, 3),
+            new NavSeed("Sales", "sales", "/sales", AppPermissions.SalesView, 4),
+            new NavSeed("Outsourcing", "outsourcing", "/outsourcing", AppPermissions.OutsourcingView, 5),
+            new NavSeed("Production", "production", "/production", AppPermissions.ProductionView, 6),
+            new NavSeed("Inventory", "inventory", "/inventory", AppPermissions.InventoryView, 7),
+            new NavSeed("Planning", "planning", "/planning", AppPermissions.PlanningView, 8),
+            new NavSeed("Cash Flow", "cash-flow", "/cash-flow", AppPermissions.CashFlowView, 9),
+            new NavSeed("Inspection", "inspection", "/inspection", AppPermissions.InspectionView, 10),
+            new NavSeed("Maintenance", "maintenance", "/maintenance", AppPermissions.MaintenanceView, 11),
+            new NavSeed("Human Resource", "human-resource", "/human-resource", AppPermissions.HumanResourceView, 12)
         };
 
         foreach (var item in mainItems)
@@ -88,7 +89,7 @@ public static class DatabaseSeeder
             await EnsureSideNavItemAsync(db, item, parentId: null, level: 1);
         }
 
-        foreach (var module in mainItems.Where(item => item.Slug is not "dashboard"))
+        foreach (var module in mainItems.Where(item => item.Slug is not "dashboard" and not "ai-chat"))
         {
             var parent = await db.SideNavItems.FirstAsync(item => item.Slug == module.Slug);
             var setup = new NavSeed(

@@ -1,3 +1,4 @@
+using Erp.Api.Caching;
 using Erp.Api.Data;
 using Erp.Api.Models;
 using Erp.Api.Permissions;
@@ -9,13 +10,19 @@ namespace Erp.Api.Controllers;
 
 [ApiController]
 [Route("api/departments")]
-public sealed class DepartmentsController(AppDbContext db) : ControllerBase
+public sealed class DepartmentsController(AppDbContext db, CacheService cache) : ControllerBase
 {
     [Authorize(Policy = AppPermissions.DepartmentsView)]
     [HttpGet]
     public async Task<IReadOnlyList<Department>> GetAll()
     {
-        return await db.Departments.OrderBy(department => department.Code).ToListAsync();
+        return await cache.GetOrCreateAsync(
+            CacheKeys.Departments,
+            async () => await db.Departments
+                .AsNoTracking()
+                .OrderBy(department => department.Code)
+                .ToListAsync(),
+            TimeSpan.FromMinutes(5));
     }
 
     [Authorize(Policy = AppPermissions.DepartmentsManage)]
@@ -31,6 +38,7 @@ public sealed class DepartmentsController(AppDbContext db) : ControllerBase
 
         db.Departments.Add(department);
         await db.SaveChangesAsync();
+        await cache.RemoveAsync(CacheKeys.Departments);
         return CreatedAtAction(nameof(GetAll), new { id = department.Id }, department);
     }
 }

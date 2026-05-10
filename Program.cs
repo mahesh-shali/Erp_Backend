@@ -1,5 +1,6 @@
 using System.Text;
 using Erp.Api.Auth;
+using Erp.Api.Caching;
 using Erp.Api.Configuration;
 using Erp.Api.Data;
 using Erp.Api.Grpc;
@@ -13,7 +14,10 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql;
 
-EnvLoader.Load(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
+var contentRoot = Directory.GetCurrentDirectory();
+EnvLoader.Load(
+    Path.Combine(contentRoot, ".env"),
+    Path.Combine(contentRoot, ".env.development"));
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +28,24 @@ var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Sign
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+var redisConfiguration = NormalizeRedisConfiguration(
+    builder.Configuration["Redis:Configuration"] ??
+    builder.Configuration["Redis:Url"] ??
+    builder.Configuration["REDIS_URL"]);
+if (!string.IsNullOrWhiteSpace(redisConfiguration))
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConfiguration;
+        options.InstanceName = builder.Configuration["Redis:InstanceName"] ?? "erp:";
+    });
+}
+else
+{
+    builder.Services.AddDistributedMemoryCache();
+}
+
+builder.Services.AddSingleton<CacheService>();
 builder.Services.AddScoped<PasswordHasher<AppUser>>();
 
 builder.Services
@@ -152,6 +174,39 @@ static bool IsDatabaseUnavailable(Exception ex)
     return ex is NpgsqlException ||
            ex.InnerException is NpgsqlException ||
            ex.InnerException?.InnerException is NpgsqlException;
+}
+
+static string? NormalizeRedisConfiguration(string? configuration)
+{
+    if (string.IsNullOrWhiteSpace(configuration))
+    {
+        return null;
+    }
+
+    if (!Uri.TryCreate(configuration, UriKind.Absolute, out var uri) ||
+        (uri.Scheme is not "redis" and not "rediss"))
+    {
+        return configuration;
+    }
+
+    var host = uri.IsDefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}";
+    var options = new List<string> { host, "abortConnect=False" };
+    if (uri.Scheme == "rediss")
+    {
+        options.Add("ssl=True");
+    }
+
+    if (!string.IsNullOrWhiteSpace(uri.UserInfo))
+    {
+        var parts = uri.UserInfo.Split(':', 2);
+        var password = parts.Length == 2 ? parts[1] : parts[0];
+        if (!string.IsNullOrWhiteSpace(password))
+        {
+            options.Add($"password={Uri.UnescapeDataString(password)}");
+        }
+    }
+
+    return string.Join(',', options);
 }
 
 public partial class Program;

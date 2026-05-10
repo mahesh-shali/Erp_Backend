@@ -16,6 +16,10 @@ TestResults/
 # Local environment and secrets
 .env
 .env.*
+.env.example
+.env.development.example
+!.env.example
+!.env.development.example
 appsettings.Local.json
 appsettings.*.local.json
 secrets.json
@@ -35,6 +39,3 @@ coverage.cobertura.xml
 # OS files
 .DS_Store
 Thumbs.db
-
-appsettings.json
-appsettings.Development.json

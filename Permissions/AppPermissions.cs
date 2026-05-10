@@ -3,6 +3,7 @@ namespace Erp.Api.Permissions;
 public static class AppPermissions
 {
     public const string DashboardView = "dashboard.view";
+    public const string AiChatView = "ai-chat.view";
     public const string MasterView = "master.view";
     public const string SalesView = "sales.view";
     public const string OutsourcingView = "outsourcing.view";
@@ -23,6 +24,7 @@ public static class AppPermissions
     public static readonly string[] All =
     [
         DashboardView,
+        AiChatView,
         MasterView,
         SalesView,
         OutsourcingView,

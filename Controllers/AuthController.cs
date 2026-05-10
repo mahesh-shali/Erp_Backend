@@ -1,3 +1,4 @@
+using Erp.Api.Caching;
 using Erp.Api.Auth;
 using Erp.Api.Data;
 using Erp.Api.Models;
@@ -12,6 +13,7 @@ namespace Erp.Api.Controllers;
 [Route("api/auth")]
 public sealed class AuthController(
     AppDbContext db,
+    CacheService cache,
     PasswordHasher<AppUser> passwordHasher,
     TokenService tokenService) : ControllerBase
 {
@@ -41,6 +43,7 @@ public sealed class AuthController(
 
         db.Users.Add(user);
         await db.SaveChangesAsync();
+        await cache.RemoveAsync(CacheKeys.Users);
 
         return Ok(await CreateSessionAsync(user.Id));
     }

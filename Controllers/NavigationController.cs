@@ -1,3 +1,4 @@
+using Erp.Api.Caching;
 using Erp.Api.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +9,7 @@ namespace Erp.Api.Controllers;
 
 [ApiController]
 [Route("api/navigation")]
-public sealed class NavigationController(AppDbContext db) : ControllerBase
+public sealed class NavigationController(AppDbContext db, CacheService cache) : ControllerBase
 {
     [Authorize]
     [HttpGet("side-nav")]
@@ -20,19 +21,25 @@ public sealed class NavigationController(AppDbContext db) : ControllerBase
             return [];
         }
 
-        var items = await db.SideNavItems
-            .AsNoTracking()
-            .Where(item => item.IsActive)
-            .OrderBy(item => item.Level)
-            .ThenBy(item => item.DisplayOrder)
-            .ToListAsync();
+        return await cache.GetOrCreateAsync(
+            CacheKeys.SideNav(roleId),
+            async () =>
+            {
+                var items = await db.SideNavItems
+                    .AsNoTracking()
+                    .Where(item => item.IsActive)
+                    .OrderBy(item => item.Level)
+                    .ThenBy(item => item.DisplayOrder)
+                    .ToListAsync();
 
-        var permissions = await db.RoleSideNavPermissions
-            .AsNoTracking()
-            .Where(permission => permission.RoleId == roleId)
-            .ToDictionaryAsync(permission => permission.SideNavItemId);
+                var permissions = await db.RoleSideNavPermissions
+                    .AsNoTracking()
+                    .Where(permission => permission.RoleId == roleId)
+                    .ToDictionaryAsync(permission => permission.SideNavItemId);
 
-        return BuildTree(items, parentId: null, permissions);
+                return BuildTree(items, parentId: null, permissions);
+            },
+            TimeSpan.FromMinutes(10));
     }
 
     private static IReadOnlyList<SideNavItemResponse> BuildTree(
