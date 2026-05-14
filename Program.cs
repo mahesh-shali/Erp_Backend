@@ -8,7 +8,9 @@ using Erp.Api.Models;
 using Erp.Api.Permissions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -21,9 +23,29 @@ EnvLoader.Load(
 
 var builder = WebApplication.CreateBuilder(args);
 var renderPort = Environment.GetEnvironmentVariable("PORT");
-if (!string.IsNullOrWhiteSpace(renderPort))
+if (int.TryParse(renderPort, out var port))
 {
-    builder.WebHost.UseUrls($"http://0.0.0.0:{renderPort}");
+    var renderUrl = $"http://0.0.0.0:{port}";
+    builder.Configuration["Kestrel:Endpoints:Https:Url"] = renderUrl;
+    builder.Configuration["Kestrel:Endpoints:Https:Protocols"] = "Http1";
+    builder.WebHost.UseUrls(renderUrl);
+}
+else if (builder.Environment.IsDevelopment())
+{
+    var developmentPort = GetAvailablePort(5250);
+    if (developmentPort != 5250)
+    {
+        Console.WriteLine($"Development port 5250 is in use. Starting ERP API on https://localhost:{developmentPort} instead.");
+    }
+
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.ListenLocalhost(developmentPort, listenOptions =>
+        {
+            listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
+            listenOptions.UseHttps();
+        });
+    });
 }
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
@@ -225,6 +247,33 @@ static string? NormalizeRedisConfiguration(string? configuration)
     }
 
     return string.Join(',', options);
+}
+
+static int GetAvailablePort(int preferredPort)
+{
+    for (var port = preferredPort; port < preferredPort + 20; port++)
+    {
+        if (IsPortAvailable(port))
+        {
+            return port;
+        }
+    }
+
+    return preferredPort;
+}
+
+static bool IsPortAvailable(int port)
+{
+    try
+    {
+        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+        listener.Start();
+        return true;
+    }
+    catch (System.Net.Sockets.SocketException)
+    {
+        return false;
+    }
 }
 
 public partial class Program;
