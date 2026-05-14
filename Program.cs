@@ -20,6 +20,11 @@ EnvLoader.Load(
     Path.Combine(contentRoot, ".env.development"));
 
 var builder = WebApplication.CreateBuilder(args);
+var renderPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(renderPort))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{renderPort}");
+}
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.Configure<GoogleAuthOptions>(builder.Configuration.GetSection("Google"));
