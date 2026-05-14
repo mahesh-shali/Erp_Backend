@@ -61,8 +61,11 @@ public static class DatabaseSeeder
         else
         {
             var admin = await db.Users.FirstAsync(user => user.Email == adminEmail);
-            admin.RoleId = superAdminRole.Id;
-            await db.SaveChangesAsync();
+            if (admin.RoleId != superAdminRole.Id)
+            {
+                admin.RoleId = superAdminRole.Id;
+                await db.SaveChangesAsync();
+            }
         }
     }
 
@@ -143,14 +146,19 @@ public static class DatabaseSeeder
         }
         else
         {
-            item.ParentId = parentId;
-            item.Name = seed.Name;
-            item.Path = seed.Path;
-            item.Permission = seed.Permission;
-            item.Level = level;
-            item.DisplayOrder = seed.DisplayOrder;
-            item.IsActive = true;
-            item.ModifiedDate = DateTimeOffset.UtcNow;
+            var changed = false;
+            changed |= SetIfChanged(item.ParentId, parentId, value => item.ParentId = value);
+            changed |= SetIfChanged(item.Name, seed.Name, value => item.Name = value);
+            changed |= SetIfChanged(item.Path, seed.Path, value => item.Path = value);
+            changed |= SetIfChanged(item.Permission, seed.Permission, value => item.Permission = value);
+            changed |= SetIfChanged(item.Level, level, value => item.Level = value);
+            changed |= SetIfChanged(item.DisplayOrder, seed.DisplayOrder, value => item.DisplayOrder = value);
+            changed |= SetIfChanged(item.IsActive, true, value => item.IsActive = value);
+
+            if (changed)
+            {
+                item.ModifiedDate = DateTimeOffset.UtcNow;
+            }
         }
 
         await db.SaveChangesAsync();
@@ -176,17 +184,26 @@ public static class DatabaseSeeder
         }
         else
         {
-            role.Description = description;
-            role.ModifiedDate = DateTimeOffset.UtcNow;
+            if (role.Description != description)
+            {
+                role.Description = description;
+                role.ModifiedDate = DateTimeOffset.UtcNow;
+            }
         }
 
+        var changed = false;
         var existingPermissions = role.Permissions.Select(permission => permission.Permission).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var permission in permissions.Where(permission => !existingPermissions.Contains(permission)))
         {
             role.Permissions.Add(new RolePermission { Permission = permission });
+            changed = true;
         }
 
-        await db.SaveChangesAsync();
+        if (changed || db.ChangeTracker.HasChanges())
+        {
+            await db.SaveChangesAsync();
+        }
+
         return role;
     }
 
@@ -253,15 +270,34 @@ public static class DatabaseSeeder
         }
         else
         {
-            permission.CanRead = canRead;
-            permission.CanWrite = canWrite;
-            permission.CanUpdate = canUpdate;
-            permission.CanDelete = canDelete;
-            permission.IsVisible = isVisible;
-            permission.ModifiedDate = DateTimeOffset.UtcNow;
+            var changed = false;
+            changed |= SetIfChanged(permission.CanRead, canRead, value => permission.CanRead = value);
+            changed |= SetIfChanged(permission.CanWrite, canWrite, value => permission.CanWrite = value);
+            changed |= SetIfChanged(permission.CanUpdate, canUpdate, value => permission.CanUpdate = value);
+            changed |= SetIfChanged(permission.CanDelete, canDelete, value => permission.CanDelete = value);
+            changed |= SetIfChanged(permission.IsVisible, isVisible, value => permission.IsVisible = value);
+
+            if (changed)
+            {
+                permission.ModifiedDate = DateTimeOffset.UtcNow;
+            }
         }
 
-        await db.SaveChangesAsync();
+        if (db.ChangeTracker.HasChanges())
+        {
+            await db.SaveChangesAsync();
+        }
+    }
+
+    private static bool SetIfChanged<T>(T currentValue, T newValue, Action<T> setValue)
+    {
+        if (EqualityComparer<T>.Default.Equals(currentValue, newValue))
+        {
+            return false;
+        }
+
+        setValue(newValue);
+        return true;
     }
 
     private sealed record NavSeed(string Name, string Slug, string Path, string Permission, int DisplayOrder);

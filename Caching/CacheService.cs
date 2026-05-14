@@ -3,7 +3,7 @@ using Microsoft.Extensions.Caching.Distributed;
 
 namespace Erp.Api.Caching;
 
-public sealed class CacheService(IDistributedCache cache)
+public sealed class CacheService(IDistributedCache cache, ILogger<CacheService> logger)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -13,32 +13,54 @@ public sealed class CacheService(IDistributedCache cache)
         TimeSpan ttl,
         CancellationToken cancellationToken = default)
     {
-        var cached = await cache.GetStringAsync(key, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(cached))
+        try
         {
-            var value = JsonSerializer.Deserialize<T>(cached, JsonOptions);
-            if (value is not null)
+            var cached = await cache.GetStringAsync(key, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(cached))
             {
-                return value;
+                var value = JsonSerializer.Deserialize<T>(cached, JsonOptions);
+                if (value is not null)
+                {
+                    return value;
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Cache read failed for {CacheKey}. Falling back to source data.", key);
         }
 
         var created = await factory();
-        await cache.SetStringAsync(
-            key,
-            JsonSerializer.Serialize(created, JsonOptions),
-            new DistributedCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = ttl
-            },
-            cancellationToken);
+
+        try
+        {
+            await cache.SetStringAsync(
+                key,
+                JsonSerializer.Serialize(created, JsonOptions),
+                new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = ttl
+                },
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Cache write failed for {CacheKey}. Returning source data without caching.", key);
+        }
 
         return created;
     }
 
-    public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
+    public async Task RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
-        return cache.RemoveAsync(key, cancellationToken);
+        try
+        {
+            await cache.RemoveAsync(key, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Cache remove failed for {CacheKey}.", key);
+        }
     }
 }
 

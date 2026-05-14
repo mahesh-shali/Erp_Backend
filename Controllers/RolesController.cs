@@ -17,18 +17,27 @@ public sealed class RolesController(AppDbContext db, CacheService cache) : Contr
     {
         return await cache.GetOrCreateAsync(
             CacheKeys.Roles,
-            async () => await db.Roles
-                .AsNoTracking()
-                .Include(role => role.Permissions)
-                .OrderBy(role => role.Name)
-                .Select(role => new RoleResponse(
-                    role.Id,
-                    role.Name,
-                    role.Description,
-                    role.CreatedDate,
-                    role.ModifiedDate,
-                    role.Permissions.Select(permission => permission.Permission).Order()))
-                .ToListAsync(),
+            async () =>
+            {
+                var roles = await db.Roles
+                    .AsNoTracking()
+                    .Include(role => role.Permissions)
+                    .OrderBy(role => role.Name)
+                    .ToListAsync();
+
+                return roles
+                    .Select(role => new RoleResponse(
+                        role.Id,
+                        role.Name,
+                        role.Description,
+                        role.CreatedDate,
+                        role.ModifiedDate,
+                        role.Permissions
+                            .Select(permission => permission.Permission)
+                            .Order()
+                            .ToList()))
+                    .ToList();
+            },
             TimeSpan.FromMinutes(10));
     }
 }

@@ -2,10 +2,12 @@ using Erp.Api.Caching;
 using Erp.Api.Auth;
 using Erp.Api.Data;
 using Erp.Api.Models;
+using Google.Apis.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Erp.Api.Controllers;
 
@@ -15,7 +17,8 @@ public sealed class AuthController(
     AppDbContext db,
     CacheService cache,
     PasswordHasher<AppUser> passwordHasher,
-    TokenService tokenService) : ControllerBase
+    TokenService tokenService,
+    IOptions<GoogleAuthOptions> googleOptions) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("register")]
@@ -62,6 +65,62 @@ public sealed class AuthController(
         if (result == PasswordVerificationResult.Failed)
         {
             return Unauthorized("Invalid email or password.");
+        }
+
+        return Ok(await CreateSessionAsync(user.Id));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("google")]
+    public async Task<ActionResult<AuthResponse>> GoogleLogin(GoogleLoginRequest request)
+    {
+        var clientId = googleOptions.Value.ClientId;
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "Google login is not configured.");
+        }
+
+        GoogleJsonWebSignature.Payload payload;
+        try
+        {
+            payload = await GoogleJsonWebSignature.ValidateAsync(
+                request.Credential,
+                new GoogleJsonWebSignature.ValidationSettings
+                {
+                    Audience = [clientId]
+                });
+        }
+        catch (InvalidJwtException)
+        {
+            return Unauthorized("Invalid Google credential.");
+        }
+
+        if (payload.EmailVerified is not true || string.IsNullOrWhiteSpace(payload.Email))
+        {
+            return Unauthorized("Google email must be verified.");
+        }
+
+        var email = payload.Email.Trim().ToLowerInvariant();
+        var user = await db.Users.FirstOrDefaultAsync(existing => existing.Email == email);
+        if (user is null)
+        {
+            var role = await db.Roles.FirstOrDefaultAsync(existing => existing.Name == "Employee");
+            if (role is null)
+            {
+                return BadRequest("Default Employee role has not been seeded yet.");
+            }
+
+            user = new AppUser
+            {
+                Id = Guid.NewGuid(),
+                Name = string.IsNullOrWhiteSpace(payload.Name) ? email : payload.Name.Trim(),
+                Email = email,
+                RoleId = role.Id
+            };
+            user.Password = passwordHasher.HashPassword(user, TokenService.GenerateRefreshToken());
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+            await cache.RemoveAsync(CacheKeys.Users);
         }
 
         return Ok(await CreateSessionAsync(user.Id));
@@ -152,4 +211,5 @@ public sealed class AuthController(
 
 public sealed record RegisterRequest(string Name, string Email, string Password);
 public sealed record LoginRequest(string Email, string Password);
+public sealed record GoogleLoginRequest(string Credential);
 public sealed record RefreshRequest(string RefreshToken);
