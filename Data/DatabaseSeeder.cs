@@ -2,11 +2,39 @@ using Erp.Api.Models;
 using Erp.Api.Permissions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Erp.Api.Data;
 
 public static class DatabaseSeeder
 {
+    public static string SeedFingerprint
+    {
+        get
+        {
+            var builder = new StringBuilder();
+            builder.AppendLine("seed:v2");
+            foreach (var item in BuildSideNavSeeds())
+            {
+                builder.AppendLine($"{item.ParentSlug}|{item.Name}|{item.Slug}|{item.Path}|{item.Permission}|{item.Level}|{item.DisplayOrder}");
+            }
+
+            foreach (var permission in AppPermissions.All.Order(StringComparer.Ordinal))
+            {
+                builder.AppendLine($"permission|{permission}");
+            }
+
+            builder.AppendLine("role|SuperAdmin|all-nav");
+            builder.AppendLine("role|Admin|all-nav");
+            builder.AppendLine("role|Manager|dashboard-users-roles-departments");
+            builder.AppendLine("role|Employee|dashboard-only");
+            builder.AppendLine("admin|admin@erp.local|superadmin");
+
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
+        }
+    }
+
     public static async Task SeedAsync(IServiceProvider services)
     {
         using var scope = services.CreateScope();
@@ -71,21 +99,7 @@ public static class DatabaseSeeder
 
     private static async Task SeedSideNavItemsAsync(AppDbContext db)
     {
-        var mainItems = new[]
-        {
-            new NavSeed("Dashboard", "dashboard", "/dashboard", AppPermissions.DashboardView, 1),
-            new NavSeed("AI Chat", "ai-chat", "/ai-chat", AppPermissions.AiChatView, 2),
-            new NavSeed("Master", "master", "/master", AppPermissions.MasterView, 3),
-            new NavSeed("Sales", "sales", "/sales", AppPermissions.SalesView, 4),
-            new NavSeed("Outsourcing", "outsourcing", "/outsourcing", AppPermissions.OutsourcingView, 5),
-            new NavSeed("Production", "production", "/production", AppPermissions.ProductionView, 6),
-            new NavSeed("Inventory", "inventory", "/inventory", AppPermissions.InventoryView, 7),
-            new NavSeed("Planning", "planning", "/planning", AppPermissions.PlanningView, 8),
-            new NavSeed("Cash Flow", "cash-flow", "/cash-flow", AppPermissions.CashFlowView, 9),
-            new NavSeed("Inspection", "inspection", "/inspection", AppPermissions.InspectionView, 10),
-            new NavSeed("Maintenance", "maintenance", "/maintenance", AppPermissions.MaintenanceView, 11),
-            new NavSeed("Human Resource", "human-resource", "/human-resource", AppPermissions.HumanResourceView, 12)
-        };
+        var mainItems = MainSideNavSeeds();
 
         foreach (var item in mainItems)
         {
@@ -119,6 +133,57 @@ public static class DatabaseSeeder
             await EnsureSideNavItemAsync(db, new NavSeed("Dummy Entry", $"{module.Slug}-transactions-entry", $"{transactions.Path}/entry", PermissionFor($"{module.Slug}.transactions.entry"), 1), transactionParent.Id, level: 3);
             await EnsureSideNavItemAsync(db, new NavSeed("Dummy Report", $"{module.Slug}-transactions-report", $"{transactions.Path}/report", PermissionFor($"{module.Slug}.transactions.report"), 2), transactionParent.Id, level: 3);
         }
+    }
+
+    private static IReadOnlyList<NavSeed> MainSideNavSeeds()
+    {
+        return
+        [
+            new NavSeed("Dashboard", "dashboard", "/dashboard", AppPermissions.DashboardView, 1),
+            new NavSeed("AI Chat", "ai-chat", "/ai-chat", AppPermissions.AiChatView, 2),
+            new NavSeed("Master", "master", "/master", AppPermissions.MasterView, 3),
+            new NavSeed("Sales", "sales", "/sales", AppPermissions.SalesView, 4),
+            new NavSeed("Outsourcing", "outsourcing", "/outsourcing", AppPermissions.OutsourcingView, 5),
+            new NavSeed("Production", "production", "/production", AppPermissions.ProductionView, 6),
+            new NavSeed("Inventory", "inventory", "/inventory", AppPermissions.InventoryView, 7),
+            new NavSeed("Planning", "planning", "/planning", AppPermissions.PlanningView, 8),
+            new NavSeed("Cash Flow", "cash-flow", "/cash-flow", AppPermissions.CashFlowView, 9),
+            new NavSeed("Inspection", "inspection", "/inspection", AppPermissions.InspectionView, 10),
+            new NavSeed("Maintenance", "maintenance", "/maintenance", AppPermissions.MaintenanceView, 11),
+            new NavSeed("Human Resource", "human-resource", "/human-resource", AppPermissions.HumanResourceView, 12)
+        ];
+    }
+
+    private static IReadOnlyList<NavSeedFingerprint> BuildSideNavSeeds()
+    {
+        var seeds = new List<NavSeedFingerprint>();
+        var mainItems = MainSideNavSeeds();
+        seeds.AddRange(mainItems.Select(item => new NavSeedFingerprint(null, item.Name, item.Slug, item.Path, item.Permission, 1, item.DisplayOrder)));
+
+        foreach (var module in mainItems.Where(item => item.Slug is not "dashboard" and not "ai-chat"))
+        {
+            var setup = new NavSeed(
+                $"{module.Name} Setup",
+                $"{module.Slug}-setup",
+                $"{module.Path}/setup",
+                PermissionFor($"{module.Slug}.setup"),
+                1);
+            var transactions = new NavSeed(
+                $"{module.Name} Transactions",
+                $"{module.Slug}-transactions",
+                $"{module.Path}/transactions",
+                PermissionFor($"{module.Slug}.transactions"),
+                2);
+
+            seeds.Add(new NavSeedFingerprint(module.Slug, setup.Name, setup.Slug, setup.Path, setup.Permission, 2, setup.DisplayOrder));
+            seeds.Add(new NavSeedFingerprint(module.Slug, transactions.Name, transactions.Slug, transactions.Path, transactions.Permission, 2, transactions.DisplayOrder));
+            seeds.Add(new NavSeedFingerprint(setup.Slug, "Dummy List", $"{module.Slug}-setup-list", $"{setup.Path}/list", PermissionFor($"{module.Slug}.setup.list"), 3, 1));
+            seeds.Add(new NavSeedFingerprint(setup.Slug, "Dummy Create", $"{module.Slug}-setup-create", $"{setup.Path}/create", PermissionFor($"{module.Slug}.setup.create"), 3, 2));
+            seeds.Add(new NavSeedFingerprint(transactions.Slug, "Dummy Entry", $"{module.Slug}-transactions-entry", $"{transactions.Path}/entry", PermissionFor($"{module.Slug}.transactions.entry"), 3, 1));
+            seeds.Add(new NavSeedFingerprint(transactions.Slug, "Dummy Report", $"{module.Slug}-transactions-report", $"{transactions.Path}/report", PermissionFor($"{module.Slug}.transactions.report"), 3, 2));
+        }
+
+        return seeds;
     }
 
     private static string PermissionFor(string value)
@@ -301,4 +366,5 @@ public static class DatabaseSeeder
     }
 
     private sealed record NavSeed(string Name, string Slug, string Path, string Permission, int DisplayOrder);
+    private sealed record NavSeedFingerprint(string? ParentSlug, string Name, string Slug, string Path, string Permission, int Level, int DisplayOrder);
 }

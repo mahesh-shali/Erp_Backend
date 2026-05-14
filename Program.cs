@@ -124,8 +124,20 @@ if (builder.Configuration.GetValue("Database:AutoMigrate", true))
 {
     try
     {
-        await DatabaseMigrator.MigrateLatestAsync(app.Services, app.Logger);
-        await DatabaseSeeder.SeedAsync(app.Services);
+        var migrationResult = await DatabaseMigrator.MigrateLatestAsync(app.Services, app.Logger);
+        var seedState = $"{migrationResult.LatestMigration ?? "no-migrations"}:{DatabaseSeeder.SeedFingerprint}";
+        var previousSeedState = await StartupStateStore.GetValueAsync(app.Services, "database-seed");
+
+        if (previousSeedState == seedState)
+        {
+            app.Logger.LogInformation("Database seed is already current. Skipping startup seed checks.");
+        }
+        else
+        {
+            app.Logger.LogInformation("Database seed changed or has not run yet. Applying startup seed data.");
+            await DatabaseSeeder.SeedAsync(app.Services);
+            await StartupStateStore.SetValueAsync(app.Services, "database-seed", seedState);
+        }
     }
     catch (Exception ex) when (!builder.Configuration.GetValue("Database:FailStartupOnMigrationError", false))
     {

@@ -4,7 +4,7 @@ namespace Erp.Api.Data;
 
 public static class DatabaseMigrator
 {
-    public static async Task MigrateLatestAsync(IServiceProvider services, ILogger logger)
+    public static async Task<MigrationCheckResult> MigrateLatestAsync(IServiceProvider services, ILogger logger)
     {
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -14,7 +14,7 @@ public static class DatabaseMigrator
         if (latestMigration is null)
         {
             logger.LogInformation("No EF Core migrations exist for this project.");
-            return;
+            return new MigrationCheckResult(null, null, MigrationApplied: false);
         }
 
         var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync()).ToList();
@@ -23,7 +23,7 @@ public static class DatabaseMigrator
         if (latestAppliedMigration == latestMigration)
         {
             logger.LogInformation("Database is already on latest migration {MigrationId}.", latestMigration);
-            return;
+            return new MigrationCheckResult(latestMigration, latestAppliedMigration, MigrationApplied: false);
         }
 
         logger.LogInformation(
@@ -32,5 +32,8 @@ public static class DatabaseMigrator
             latestMigration);
 
         await db.Database.MigrateAsync();
+        return new MigrationCheckResult(latestMigration, latestAppliedMigration, MigrationApplied: true);
     }
 }
+
+public sealed record MigrationCheckResult(string? LatestMigration, string? LatestAppliedMigration, bool MigrationApplied);
