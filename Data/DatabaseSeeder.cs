@@ -282,65 +282,58 @@ public static class DatabaseSeeder
         bool isVisible)
     {
         var sideNavItems = await db.SideNavItems.ToListAsync();
-        foreach (var item in sideNavItems)
-        {
-            await EnsureRoleSideNavPermissionAsync(db, role.Id, item.Id, canRead, canWrite, canUpdate, canDelete, isVisible);
-        }
+        await EnsureRoleSideNavPermissionsAsync(db, role.Id, sideNavItems, _ => (canRead, canWrite, canUpdate, canDelete, isVisible));
     }
 
     private static async Task EnsureDashboardOnlyAsync(AppDbContext db, AppRole role)
     {
         var sideNavItems = await db.SideNavItems.ToListAsync();
-        foreach (var item in sideNavItems)
-        {
-            var enabled = item.Slug == "dashboard";
-            await EnsureRoleSideNavPermissionAsync(
-                db,
-                role.Id,
-                item.Id,
-                canRead: enabled,
-                canWrite: false,
-                canUpdate: false,
-                canDelete: false,
-                isVisible: enabled);
-        }
+        await EnsureRoleSideNavPermissionsAsync(
+            db,
+            role.Id,
+            sideNavItems,
+            item =>
+            {
+                var enabled = item.Slug == "dashboard";
+                return (enabled, false, false, false, enabled);
+            });
     }
 
-    private static async Task EnsureRoleSideNavPermissionAsync(
+    private static async Task EnsureRoleSideNavPermissionsAsync(
         AppDbContext db,
         int roleId,
-        int sideNavItemId,
-        bool canRead,
-        bool canWrite,
-        bool canUpdate,
-        bool canDelete,
-        bool isVisible)
+        IReadOnlyList<SideNavItem> sideNavItems,
+        Func<SideNavItem, (bool CanRead, bool CanWrite, bool CanUpdate, bool CanDelete, bool IsVisible)> resolve)
     {
-        var permission = await db.RoleSideNavPermissions
-            .FirstOrDefaultAsync(existing => existing.RoleId == roleId && existing.SideNavItemId == sideNavItemId);
+        var existingPermissions = await db.RoleSideNavPermissions
+            .Where(existing => existing.RoleId == roleId)
+            .ToDictionaryAsync(existing => existing.SideNavItemId);
 
-        if (permission is null)
+        foreach (var item in sideNavItems)
         {
-            db.RoleSideNavPermissions.Add(new RoleSideNavPermission
+            var values = resolve(item);
+            if (!existingPermissions.TryGetValue(item.Id, out var permission))
             {
-                RoleId = roleId,
-                SideNavItemId = sideNavItemId,
-                CanRead = canRead,
-                CanWrite = canWrite,
-                CanUpdate = canUpdate,
-                CanDelete = canDelete,
-                IsVisible = isVisible,
-                CreatedDate = DateTimeOffset.UtcNow
-            });
-        }
-        else
-        {
+                db.RoleSideNavPermissions.Add(new RoleSideNavPermission
+                {
+                    RoleId = roleId,
+                    SideNavItemId = item.Id,
+                    CanRead = values.CanRead,
+                    CanWrite = values.CanWrite,
+                    CanUpdate = values.CanUpdate,
+                    CanDelete = values.CanDelete,
+                    IsVisible = values.IsVisible,
+                    CreatedDate = DateTimeOffset.UtcNow
+                });
+                continue;
+            }
+
             var changed = false;
-            changed |= SetIfChanged(permission.CanRead, canRead, value => permission.CanRead = value);
-            changed |= SetIfChanged(permission.CanWrite, canWrite, value => permission.CanWrite = value);
-            changed |= SetIfChanged(permission.CanUpdate, canUpdate, value => permission.CanUpdate = value);
-            changed |= SetIfChanged(permission.CanDelete, canDelete, value => permission.CanDelete = value);
-            changed |= SetIfChanged(permission.IsVisible, isVisible, value => permission.IsVisible = value);
+            changed |= SetIfChanged(permission.CanRead, values.CanRead, value => permission.CanRead = value);
+            changed |= SetIfChanged(permission.CanWrite, values.CanWrite, value => permission.CanWrite = value);
+            changed |= SetIfChanged(permission.CanUpdate, values.CanUpdate, value => permission.CanUpdate = value);
+            changed |= SetIfChanged(permission.CanDelete, values.CanDelete, value => permission.CanDelete = value);
+            changed |= SetIfChanged(permission.IsVisible, values.IsVisible, value => permission.IsVisible = value);
 
             if (changed)
             {
