@@ -22,31 +22,7 @@ EnvLoader.Load(
     Path.Combine(contentRoot, ".env.development"));
 
 var builder = WebApplication.CreateBuilder(args);
-var renderPort = Environment.GetEnvironmentVariable("PORT");
-if (int.TryParse(renderPort, out var port))
-{
-    var renderUrl = $"http://0.0.0.0:{port}";
-    builder.Configuration["Kestrel:Endpoints:Https:Url"] = renderUrl;
-    builder.Configuration["Kestrel:Endpoints:Https:Protocols"] = "Http1";
-    builder.WebHost.UseUrls(renderUrl);
-}
-else if (builder.Environment.IsDevelopment())
-{
-    var developmentPort = GetAvailablePort(5250);
-    if (developmentPort != 5250)
-    {
-        Console.WriteLine($"Development port 5250 is in use. Starting ERP API on https://localhost:{developmentPort} instead.");
-    }
-
-    builder.WebHost.ConfigureKestrel(options =>
-    {
-        options.ListenLocalhost(developmentPort, listenOptions =>
-        {
-            listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
-            listenOptions.UseHttps();
-        });
-    });
-}
+ConfigureHosting(builder);
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.Configure<GoogleAuthOptions>(builder.Configuration.GetSection("Google"));
@@ -249,6 +225,46 @@ static string? NormalizeRedisConfiguration(string? configuration)
     return string.Join(',', options);
 }
 
+static void ConfigureHosting(WebApplicationBuilder builder)
+{
+    var renderPort = Environment.GetEnvironmentVariable("PORT");
+    if (int.TryParse(renderPort, out var productionPort))
+    {
+        var renderUrl = $"http://0.0.0.0:{productionPort}";
+        builder.Configuration["Kestrel:Endpoints:Https:Url"] = renderUrl;
+        builder.Configuration["Kestrel:Endpoints:Https:Protocols"] = "Http1";
+        builder.WebHost.UseUrls(renderUrl);
+        return;
+    }
+
+    if (!builder.Environment.IsDevelopment())
+    {
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.ListenAnyIP(8080, listenOptions =>
+            {
+                listenOptions.Protocols = HttpProtocols.Http1;
+            });
+        });
+        return;
+    }
+
+    var developmentPort = GetAvailablePort(5250);
+    if (developmentPort != 5250)
+    {
+        Console.WriteLine($"Development port 5250 is in use. Starting ERP API on https://localhost:{developmentPort} instead.");
+    }
+
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.ListenLocalhost(developmentPort, listenOptions =>
+        {
+            listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
+            listenOptions.UseHttps();
+        });
+    });
+}
+
 static int GetAvailablePort(int preferredPort)
 {
     for (var port = preferredPort; port < preferredPort + 20; port++)
@@ -264,16 +280,25 @@ static int GetAvailablePort(int preferredPort)
 
 static bool IsPortAvailable(int port)
 {
-    try
+    var ipProperties = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties();
+
+    foreach (var endpoint in ipProperties.GetActiveTcpListeners())
     {
-        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
-        listener.Start();
-        return true;
+        if (endpoint.Port == port)
+        {
+            return false;
+        }
     }
-    catch (System.Net.Sockets.SocketException)
+
+    foreach (var endpoint in ipProperties.GetActiveUdpListeners())
     {
-        return false;
+        if (endpoint.Port == port)
+        {
+            return false;
+        }
     }
+
+    return true;
 }
 
 public partial class Program;
